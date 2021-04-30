@@ -2,7 +2,7 @@ const express = require('express')
 const exphbs = require('express-handlebars')
 const session = require('express-session')
 const passport = require('passport')
-const LocalStrategy = require('passport-local').Strategy
+const FacebookStrategy = require('passport-facebook').Strategy
 const bcrypt = require('bcrypt')
 const MongoStore = require('connect-mongo')
 const mongoose = require('mongoose')
@@ -36,9 +36,6 @@ app.use(express.json())
 app.use(express.urlencoded({extended: true}))
 app.use(express.static('public'))
 
-function validarPassword ( passwordReq, passwordBD )  {
-  return bcrypt.compareSync(passwordReq, passwordBD )
-}
 
 checkIsAuthenticated = (req, res, next) => {
   if(req.isAuthenticated()) {
@@ -60,25 +57,46 @@ passport.deserializeUser((id, done) => {
   });
 });
 
-passport.use('login', new LocalStrategy({usernameField: 'usuario', passwordField: 'password', session: true}, async ( username, password, cb) => { 
+
+
+passport.use('facebook', new FacebookStrategy({
+  clientID: '471231287445799', 
+  clientSecret: 'c02e57ca527cdafee74bd96f931e65ea', 
+  callbackURL: `http://localhost:3232/auth/facebook/callback`, 
+  profileFields: ['id', 'displayName', 'email', 'picture'] },
+  async ( accessToken, refreshToken, profile, cb) => { 
     try {
-      let usuarioDB = await usuarioServicio.getUserByName( username )
-      if(usuarioDB.length > 0) {
-        if(!validarPassword(password, usuarioDB[0].password)) {
-          return cb(null, false)
-        }
-        return cb(null, usuarioDB[0])
+      let usuarioDB = await usuarioServicio.getUserByIdFacebook( profile.id )
+      if(usuarioDB) {
+        return cb(null, usuarioDB)
       } else {
-        return cb(null, false)
+        let newUser = await usuarioServicio.add( profile )
+        return cb(null, newUser)
       }
     } catch ( err ) { console.log(err); return cb(err)}
   })
 )
 
 
+app.get('/auth/facebook', passport.authenticate('facebook', { scope: ['email'] }))
 
-app.get('/', checkIsAuthenticated,  (req, res) => {
-  res.redirect('/producto')      
+app.get('/auth/facebook/callback', passport.authenticate('facebook', { failureRedirect: '/login'}), (req, res) => {
+  req.session.facebookId = req.user.facebookId
+  res.redirect(`/perfil`)
+})
+
+app.get('/', (req, res) => {  
+  if(req.session.usuario) {
+    res.redirect(`/perfil`)
+  } else {
+    res.redirect('/login')
+  }
+})
+
+app.get('/perfil', checkIsAuthenticated, async  (req, res) => {
+  let perfil = await usuarioServicio.getUserByIdFacebook(req.session.facebookId)
+  console.log(perfil)
+  res.render('perfil', { perfil } )     
 })
 
 app.get('/login', (req, res) => {
@@ -87,48 +105,6 @@ app.get('/login', (req, res) => {
   res.render('login', { usuarioExistente, passwordIncorrecto } )
 })
 
-app.get('/register', (req, res) => {
-  res.sendFile(`${__dirname}/public/register.html`)
-})
-
-app.get('/producto', checkIsAuthenticated, async (req, res) => {
-  res.render('productos', { productos: await productoServicio.getAll(), listExists: true} )
-})
-
-app.post('/producto', async  (req, res) => {
-  try {
-    if(req.body) {
-      await productoServicio.add(req.body)
-    }
-    res.redirect('/producto')
-  } catch ( err ) { console.log(err) }
-})
-
-app.post('/register', async (req, res) => {
-  let usuario = await usuarioServicio.getUserByName(req.body.usuario.toLowerCase())
-  let ue = true
-  if(usuario.length == 0) {
-    ue = false
-    let hashPassword = function ( password ) {
-      return bcrypt.hashSync( password , bcrypt.genSaltSync(10), null)
-    }
-  
-    let nuevoUsuario = { 
-      usuario: req.body.usuario.toLowerCase(), 
-      password: hashPassword(req.body.password), 
-      email: req.body.email.toLowerCase()
-    }
-  
-    await usuarioServicio.add(nuevoUsuario)
-  }
-  return res.redirect(`/login?ue=${ue}`)  
-})
-
-app.post('/ingresar', passport.authenticate('login', { failureRedirect: '/login?pi=true'}), async (req, res) => {
-  try {
-    res.redirect('/producto')
-  } catch ( err ) { console.log(err) }
-})
 
 app.get('/salir', (req, res) => {
   req.session.destroy( () => {

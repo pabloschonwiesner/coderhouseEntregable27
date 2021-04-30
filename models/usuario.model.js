@@ -4,9 +4,11 @@ const AutoIncrement = require('mongoose-sequence')(mongoose);
 let Schema = mongoose.Schema;
 
 let usuarioSchema = new Schema({
+  facebookId: String,
   usuario: String,
   password: String,
-  email: String
+  email: String,
+  picture: String
 })
 
 

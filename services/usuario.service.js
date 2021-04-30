@@ -15,8 +15,20 @@ class UsuarioServicio {
     return await Usuario.find({ usuario })    
   }
 
+  async getUserByIdFacebook ( facebookId ) {
+    return await Usuario.findOne({ facebookId }).lean()
+  }
+
   async add ( usuario ) {
-    let nuevoUsuario = new Usuario( { usuario: usuario.usuario, password: usuario.password, email: usuario.email })
+    console.log(usuario)
+
+    let nuevoUsuario = new Usuario( { 
+      facebookId: usuario.id || '',  
+      usuario: usuario.displayName || '', 
+      password: usuario.password || '', 
+      email: usuario.emails.length > 0 ? usuario.emails[0].value : '',
+      picture: usuario.picture || ''
+    })
     return await nuevoUsuario.save() 
   }
 
